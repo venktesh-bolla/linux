@@ -51,6 +51,15 @@ asmlinkage long sys_rt_sigreturn_wrapper(void);
 #define compat_sys_open_by_handle_at   sys_open_by_handle_at
 #define compat_sys_openat              sys_openat
 
+asmlinkage long compat_sys_mmap2_wrapper(void);
+#define sys_mmap2                      compat_sys_mmap2_wrapper
+
+asmlinkage long compat_sys_fstatfs64_wrapper(void);
+#define compat_sys_fstatfs64    compat_sys_fstatfs64_wrapper
+
+asmlinkage long compat_sys_statfs64_wrapper(void);
+#define compat_sys_statfs64             compat_sys_statfs64_wrapper
+
 #include <asm/syscall.h>
 
 #undef __SYSCALL
