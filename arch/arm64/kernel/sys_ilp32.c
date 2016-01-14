@@ -65,6 +65,9 @@ static unsigned long compat_sys_pwrite64(unsigned int fd,
 	return sys_pwrite64(fd, (char *) ubuf, count, offset);
 }
 
+asmlinkage long ilp32_sys_rt_sigreturn_wrapper(void);
+#define compat_sys_rt_sigreturn        ilp32_sys_rt_sigreturn_wrapper
+
 #include <asm/syscall.h>
 
 #undef __SYSCALL
