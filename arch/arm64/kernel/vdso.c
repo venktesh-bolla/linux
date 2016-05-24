@@ -40,6 +40,12 @@ extern char vdso_start, vdso_end;
 static unsigned long vdso_pages;
 static struct page **vdso_pagelist;
 
+#ifdef CONFIG_ARM64_ILP32
+extern char vdso_ilp32_start, vdso_ilp32_end;
+static unsigned long vdso_ilp32_pages;
+static struct page **vdso_ilp32_pagelist;
+#endif
+
 /*
  * The vDSO data page.
  */
@@ -110,48 +116,76 @@ int aarch32_setup_vectors_page(struct linux_binprm *bprm, int uses_interp)
 }
 #endif /* CONFIG_AARCH32_EL0 */
 
-static struct vm_special_mapping vdso_spec[2];
-
-static int __init vdso_init(void)
+static int __init vdso_init_common(char *init_vdso_start, char *init_vdso_end,
+					  unsigned long *vdso_pagesp,
+					  struct page ***vdso_pagelistp,
+					  struct vm_special_mapping* vdso_spec)
 {
 	int i;
+	unsigned long init_vdso_pages;
+	struct page **init_vdso_pagelist;
 
-	if (memcmp(&vdso_start, "\177ELF", 4)) {
+	if (memcmp(init_vdso_start, "\177ELF", 4)) {
 		pr_err("vDSO is not a valid ELF object!\n");
 		return -EINVAL;
 	}
 
-	vdso_pages = (&vdso_end - &vdso_start) >> PAGE_SHIFT;
+	init_vdso_pages = (init_vdso_end - init_vdso_start) >> PAGE_SHIFT;
+	*vdso_pagesp = init_vdso_pages;
 	pr_info("vdso: %ld pages (%ld code @ %p, %ld data @ %p)\n",
-		vdso_pages + 1, vdso_pages, &vdso_start, 1L, vdso_data);
+					init_vdso_pages + 1, init_vdso_pages,
+					init_vdso_start, 1L, vdso_data);
 
 	/* Allocate the vDSO pagelist, plus a page for the data. */
-	vdso_pagelist = kcalloc(vdso_pages + 1, sizeof(struct page *),
+	init_vdso_pagelist = kcalloc(init_vdso_pages + 1, sizeof(struct page *),
 				GFP_KERNEL);
-	if (vdso_pagelist == NULL)
+	*vdso_pagelistp = init_vdso_pagelist;
+	if (init_vdso_pagelist == NULL)
 		return -ENOMEM;
 
 	/* Grab the vDSO data page. */
-	vdso_pagelist[0] = pfn_to_page(PHYS_PFN(__pa(vdso_data)));
+	init_vdso_pagelist[0] = pfn_to_page(PHYS_PFN(__pa(vdso_data)));
 
 	/* Grab the vDSO code pages. */
-	for (i = 0; i < vdso_pages; i++)
-		vdso_pagelist[i + 1] = pfn_to_page(PHYS_PFN(__pa(&vdso_start)) + i);
+	for (i = 0; i < init_vdso_pages; i++)
+		init_vdso_pagelist[i + 1] =
+			pfn_to_page(PHYS_PFN(__pa(init_vdso_start)) + i);
 
 	/* Populate the special mapping structures */
 	vdso_spec[0] = (struct vm_special_mapping) {
 		.name	= "[vvar]",
-		.pages	= vdso_pagelist,
+		.pages	= init_vdso_pagelist,
 	};
 
 	vdso_spec[1] = (struct vm_special_mapping) {
 		.name	= "[vdso]",
-		.pages	= &vdso_pagelist[1],
+		.pages	= &init_vdso_pagelist[1],
 	};
 
 	return 0;
 }
+
+static struct vm_special_mapping vdso_spec[2];
+
+static int __init vdso_init(void)
+{
+	return vdso_init_common(&vdso_start, &vdso_end,
+				&vdso_pages, &vdso_pagelist,
+				vdso_spec);
+}
 arch_initcall(vdso_init);
+
+#ifdef CONFIG_ARM64_ILP32
+static struct vm_special_mapping vdso_ilp32_spec[2];
+
+static int __init vdso_ilp32_init(void)
+{
+	return vdso_init_common(&vdso_ilp32_start, &vdso_ilp32_end,
+				&vdso_ilp32_pages, &vdso_ilp32_pagelist,
+				vdso_ilp32_spec);
+}
+arch_initcall(vdso_ilp32_init);
+#endif
 
 int arch_setup_additional_pages(struct linux_binprm *bprm,
 				int uses_interp)
@@ -159,8 +193,17 @@ int arch_setup_additional_pages(struct linux_binprm *bprm,
 	struct mm_struct *mm = current->mm;
 	unsigned long vdso_base, vdso_text_len, vdso_mapping_len;
 	void *ret;
+	unsigned long pages = vdso_pages;
+	struct vm_special_mapping *spec = vdso_spec;
 
-	vdso_text_len = vdso_pages << PAGE_SHIFT;
+#ifdef CONFIG_ARM64_ILP32
+	if (is_ilp32_compat_task()) {
+	        pages = vdso_ilp32_pages;
+	        spec = vdso_ilp32_spec;
+	}
+#endif
+
+	vdso_text_len = pages << PAGE_SHIFT;
 	/* Be sure to map the data page */
 	vdso_mapping_len = vdso_text_len + PAGE_SIZE;
 
@@ -173,7 +216,7 @@ int arch_setup_additional_pages(struct linux_binprm *bprm,
 	}
 	ret = _install_special_mapping(mm, vdso_base, PAGE_SIZE,
 				       VM_READ|VM_MAYREAD,
-				       &vdso_spec[0]);
+				       &spec[0]);
 	if (IS_ERR(ret))
 		goto up_fail;
 
@@ -182,7 +225,7 @@ int arch_setup_additional_pages(struct linux_binprm *bprm,
 	ret = _install_special_mapping(mm, vdso_base, vdso_text_len,
 				       VM_READ|VM_EXEC|
 				       VM_MAYREAD|VM_MAYWRITE|VM_MAYEXEC,
-				       &vdso_spec[1]);
+				       &spec[1]);
 	if (IS_ERR(ret))
 		goto up_fail;
 
