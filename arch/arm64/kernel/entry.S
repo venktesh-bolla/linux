@@ -237,6 +237,22 @@ tsk	.req	x28		// current thread_info
 	irq_stack_exit
 	.endm
 
+#ifdef CONFIG_ARM64_ILP32
+/*
+ * Clear x0-x7 top halves for ILP32 safe execution.
+ */
+	.macro	delouse_input
+	mov	w0, w0
+	mov	w1, w1
+	mov	w2, w2
+	mov	w3, w3
+	mov	w4, w4
+	mov	w5, w5
+	mov	w6, w6
+	mov	w7, w7
+	.endm
+#endif
+
 	.text
 
 /*
@@ -725,6 +741,7 @@ el0_svc:
 	adrp	x17, sys_call_ilp32_table	// load ilp32 syscall table pointer
 	tst	x16, #_TIF_32BIT_AARCH64
 	csel    stbl, stbl, x17, eq		// We are using ILP32
+	delouse_input
 #endif
 el0_svc_naked:					// compat entry point
 	stp	x0, scno, [sp, #S_ORIG_X0]	// save the original x0 and syscall number
