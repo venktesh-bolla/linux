@@ -51,12 +51,13 @@
  * Use non-compat syscall handlers where rlimit, stat and statfs
  * structure pointers are passed, as their layout is identical to LP64.
  */
-#define compat_sys_fstatfs64		sys_fstatfs
-#define compat_sys_statfs64		sys_statfs
-#define sys_fstat64			sys_newfstat
-#define sys_fstatat64			sys_newfstatat
+#define compat_sys_fstatfs64		compat_sys_fstatfs64_wrapper
+#define compat_sys_statfs64		compat_sys_statfs64_wrapper
 #define compat_sys_getrlimit		sys_getrlimit
 #define compat_sys_setrlimit		sys_setrlimit
+
+asmlinkage long compat_sys_fstatfs64_wrapper(void);
+asmlinkage long compat_sys_statfs64_wrapper(void);
 
 asmlinkage long compat_sys_fadvise64_64_wrapper(void);
 asmlinkage long compat_sys_fallocate_wrapper(void);
