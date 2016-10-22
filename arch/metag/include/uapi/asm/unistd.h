@@ -7,6 +7,8 @@
  * (at your option) any later version.
  */
 
+#define __ARCH_WANT_SET_GET_RLIMIT
+
 /* Use the standard ABI for syscalls. */
 #include <asm-generic/unistd.h>
 
