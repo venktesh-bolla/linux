@@ -34,7 +34,7 @@ ptrace() syscall is handled by compat version.
 shmat() syscall is handled by non-compat handler as aarch64/ilp32 has no
 limitation on 4-pages alignement for shared memory.
 
-statfs() and fstatfs() take the size of sfruct statfs as an argument.
+statfs() and fstatfs() take the size of struct statfs as an argument.
 It is calculated differently in kernel and user spaces. So AARCH32 handlers
 are taken to handle it.
 
