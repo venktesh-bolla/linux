@@ -1,7 +1,7 @@
 /*
  * AArch64- ILP32 specific system calls implementation
  *
- * Copyright (C) 2016 Cavium Inc.
+ * Copyright (C) 2017 Cavium Inc.
  * Author: Andrew Pinski <apinski@cavium.com>
  *
  * This program is free software; you can redistribute it and/or modify

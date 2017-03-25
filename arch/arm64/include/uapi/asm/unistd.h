@@ -25,7 +25,6 @@
  * AARCH64/ILP32 is introduced after next syscalls were deprecated.
  */
 #if !(defined(__ILP32__) || defined(__SYSCALL_COMPAT))
-#define __ARCH_WANT_RENAMEAT
 #define __ARCH_WANT_SET_GET_RLIMIT
 #endif
 
