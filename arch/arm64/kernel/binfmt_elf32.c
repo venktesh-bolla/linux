@@ -3,6 +3,7 @@
  */
 
 /* AArch32 EABI. */
+#define EF_ARM_EABI_MASK		0xff000000
 
 #define compat_start_thread		compat_start_thread
 #define COMPAT_SET_PERSONALITY(ex)					\
@@ -20,5 +21,8 @@
 struct linux_binprm;
 extern int aarch32_setup_vectors_page(struct linux_binprm *bprm,
 				      int uses_interp);
+
+#define compat_elf_check_arch(x)	(((x)->e_machine == EM_ARM) && \
+					 ((x)->e_flags & EF_ARM_EABI_MASK))
 
 #include "../../../fs/compat_binfmt_elf.c"

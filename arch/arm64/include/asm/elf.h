@@ -118,11 +118,6 @@ typedef struct user_fpsimd_state elf_fpregset_t;
  */
 #define elf_check_arch(x)		((x)->e_machine == EM_AARCH64)
 
-/* AArch32 EABI. */
-#define EF_ARM_EABI_MASK		0xff000000
-#define compat_elf_check_arch(x)	(((x)->e_machine == EM_ARM) && \
-					 ((x)->e_flags & EF_ARM_EABI_MASK))
-
 #define elf_read_implies_exec(ex,stk)	(stk != EXSTACK_DISABLE_X)
 
 #define CORE_DUMP_USE_REGSET
