@@ -22,9 +22,10 @@
 #include <linux/mount.h>
 #include <linux/dax.h>
 
+#include "dm-table.h"
+
 #define DM_MSG_PREFIX "table"
 
-#define MAX_DEPTH 16
 #define NODE_SIZE L1_CACHE_BYTES
 #define KEYS_PER_NODE (NODE_SIZE / sizeof(sector_t))
 #define CHILDREN_PER_NODE (KEYS_PER_NODE + 1)
