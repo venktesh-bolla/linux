@@ -20,6 +20,7 @@
 #define __ASM_GENERIC_QSPINLOCK_H
 
 #include <asm-generic/qspinlock_types.h>
+#include <linux/atomic.h>
 
 /**
  * queued_spin_unlock_wait - wait until the _current_ lock holder releases the lock
