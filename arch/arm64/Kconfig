@@ -25,6 +25,8 @@ config ARM64
 	select ARCH_WANT_COMPAT_IPC_PARSE_VERSION
 	select ARCH_WANT_FRAME_POINTERS
 	select ARCH_HAS_UBSAN_SANITIZE_ALL
+	select ARCH_USE_QUEUED_RWLOCKS if QUEUED_LOCKS
+	select ARCH_USE_QUEUED_SPINLOCKS if QUEUED_LOCKS
 	select ARM_AMBA
 	select ARM_ARCH_TIMER
 	select ARM_GIC
@@ -691,6 +693,28 @@ config ARCH_WANT_HUGE_PMD_SHARE
 
 config ARCH_HAS_CACHE_LINE_SIZE
 	def_bool y
+
+choice
+	prompt "Locking type"
+	default TICKET_LOCKS
+	help
+	  Choose between traditional ticked-based locking mechanism and
+	  queued-based mechanism.
+
+config TICKET_LOCKS
+	bool "Ticket locks"
+	help
+	  Ticked-based locking implementation for ARM64
+
+config QUEUED_LOCKS
+	bool "Queued locks"
+	help
+	  Queue-based locking mechanism. This option improves
+	  locking performance in case of high-contended locking
+	  on many-cpu machines. On low-cpu machines there is no
+	  difference comparing to ticked-based locking.
+
+endchoice
 
 source "mm/Kconfig"
 
