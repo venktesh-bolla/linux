@@ -56,6 +56,7 @@ arm64-obj-$(CONFIG_KEXEC)		+= machine_kexec.o relocate_kernel.o	\
 arm64-obj-$(CONFIG_ARM64_RELOC_TEST)	+= arm64-reloc-test.o
 arm64-reloc-test-y := reloc_test_core.o reloc_test_syms.o
 arm64-obj-$(CONFIG_CRASH_DUMP)		+= crash_dump.o
+arm64-obj-$(CONFIG_QUEUED_SPINLOCKS)	+= qspinlock.o
 
 obj-y					+= $(arm64-obj-y) vdso/ probes/
 obj-$(CONFIG_ARM64_ILP32)		+= vdso-ilp32/
