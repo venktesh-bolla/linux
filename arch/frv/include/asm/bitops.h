@@ -311,7 +311,6 @@ int __ilog2_u64(u64 n)
 }
 
 #include <asm-generic/bitops/find.h>
-#include <asm-generic/bitops/sched.h>
 #include <asm-generic/bitops/hweight.h>
 #include <asm-generic/bitops/lock.h>
 
