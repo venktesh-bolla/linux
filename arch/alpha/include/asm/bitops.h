@@ -437,8 +437,6 @@ static inline unsigned int __arch_hweight8(unsigned int w)
 
 #include <asm-generic/bitops/ext2-atomic-setbit.h>
 
-#include <asm-generic/bitops/sched.h>
-
 #endif /* __KERNEL__ */
 
 #endif /* _ALPHA_BITOPS_H */
