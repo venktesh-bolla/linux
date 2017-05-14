@@ -1529,6 +1529,8 @@ pick_next_task_rt(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 	struct task_struct *p;
 	struct rt_rq *rt_rq = &rq->rt;
 
+	u64 cycles = get_cycles();
+
 	if (need_pull_rt_task(rq, prev)) {
 		/*
 		 * This is OK, because current is on_cpu, which avoids it being
@@ -1567,6 +1569,8 @@ pick_next_task_rt(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 	dequeue_pushable_task(rq, p);
 
 	queue_push_tasks(rq);
+
+	pr_err("cycles: %lld\n", get_cycles() - cycles);
 
 	return p;
 }
