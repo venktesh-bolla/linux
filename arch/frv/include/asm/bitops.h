@@ -156,8 +156,6 @@ static inline int __test_bit(unsigned long nr, const volatile void *addr)
  __constant_test_bit((nr),(addr)) : \
  __test_bit((nr),(addr)))
 
-#include <asm-generic/bitops/find.h>
-
 /**
  * fls - find last bit set
  * @x: the word to search
@@ -312,6 +310,7 @@ int __ilog2_u64(u64 n)
 	return bit;
 }
 
+#include <asm-generic/bitops/find.h>
 #include <asm-generic/bitops/hweight.h>
 #include <asm-generic/bitops/lock.h>
 
