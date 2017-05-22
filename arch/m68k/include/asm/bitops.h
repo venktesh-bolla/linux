@@ -303,6 +303,85 @@ static inline int bfchg_mem_test_and_change_bit(int nr,
 
 #define __test_and_change_bit(nr, vaddr) test_and_change_bit(nr, vaddr)
 
+#ifdef __KERNEL__
+
+#if defined(CONFIG_CPU_HAS_NO_BITFIELDS)
+
+/*
+ *	The newer ColdFire family members support a "bitrev" instruction
+ *	and we can use that to implement a fast ffs. Older Coldfire parts,
+ *	and normal 68000 parts don't have anything special, so we use the
+ *	generic functions for those.
+ */
+#if (defined(__mcfisaaplus__) || defined(__mcfisac__)) && \
+	!defined(CONFIG_M68000) && !defined(CONFIG_MCPU32)
+static inline int __ffs(int x)
+{
+	__asm__ __volatile__ ("bitrev %0; ff1 %0"
+		: "=d" (x)
+		: "0" (x));
+	return x;
+}
+
+static inline int ffs(int x)
+{
+	if (!x)
+		return 0;
+	return __ffs(x) + 1;
+}
+
+#else
+#include <asm-generic/bitops/ffs.h>
+#include <asm-generic/bitops/__ffs.h>
+#endif
+
+#include <asm-generic/bitops/fls.h>
+#include <asm-generic/bitops/__fls.h>
+
+#else
+
+/*
+ *	ffs: find first bit set. This is defined the same way as
+ *	the libc and compiler builtin ffs routines, therefore
+ *	differs in spirit from the above ffz (man ffs).
+ */
+static inline int ffs(int x)
+{
+	int cnt;
+
+	__asm__ ("bfffo %1{#0:#0},%0"
+		: "=d" (cnt)
+		: "dm" (x & -x));
+	return 32 - cnt;
+}
+#define __ffs(x) (ffs(x) - 1)
+
+/*
+ *	fls: find last bit set.
+ */
+static inline int fls(int x)
+{
+	int cnt;
+
+	__asm__ ("bfffo %1{#0,#0},%0"
+		: "=d" (cnt)
+		: "dm" (x));
+	return 32 - cnt;
+}
+
+static inline int __fls(int x)
+{
+	return fls(x) - 1;
+}
+
+#endif
+
+#include <asm-generic/bitops/ext2-atomic.h>
+#include <asm-generic/bitops/le.h>
+#include <asm-generic/bitops/fls64.h>
+#include <asm-generic/bitops/hweight.h>
+#include <asm-generic/bitops/lock.h>
+#endif /* __KERNEL__ */
 
 /*
  *	The true 68020 and more advanced processors support the "bfffo"
@@ -311,8 +390,8 @@ static inline int bfchg_mem_test_and_change_bit(int nr,
  *	functions.
  */
 #if defined(CONFIG_CPU_HAS_NO_BITFIELDS)
-#include <asm-generic/bitops/find.h>
 #include <asm-generic/bitops/ffz.h>
+#include <asm-generic/bitops/find.h>
 #else
 
 static inline int find_first_zero_bit(const unsigned long *vaddr,
@@ -440,85 +519,5 @@ static inline unsigned long ffz(unsigned long word)
 }
 
 #endif
-
-#ifdef __KERNEL__
-
-#if defined(CONFIG_CPU_HAS_NO_BITFIELDS)
-
-/*
- *	The newer ColdFire family members support a "bitrev" instruction
- *	and we can use that to implement a fast ffs. Older Coldfire parts,
- *	and normal 68000 parts don't have anything special, so we use the
- *	generic functions for those.
- */
-#if (defined(__mcfisaaplus__) || defined(__mcfisac__)) && \
-	!defined(CONFIG_M68000) && !defined(CONFIG_MCPU32)
-static inline int __ffs(int x)
-{
-	__asm__ __volatile__ ("bitrev %0; ff1 %0"
-		: "=d" (x)
-		: "0" (x));
-	return x;
-}
-
-static inline int ffs(int x)
-{
-	if (!x)
-		return 0;
-	return __ffs(x) + 1;
-}
-
-#else
-#include <asm-generic/bitops/ffs.h>
-#include <asm-generic/bitops/__ffs.h>
-#endif
-
-#include <asm-generic/bitops/fls.h>
-#include <asm-generic/bitops/__fls.h>
-
-#else
-
-/*
- *	ffs: find first bit set. This is defined the same way as
- *	the libc and compiler builtin ffs routines, therefore
- *	differs in spirit from the above ffz (man ffs).
- */
-static inline int ffs(int x)
-{
-	int cnt;
-
-	__asm__ ("bfffo %1{#0:#0},%0"
-		: "=d" (cnt)
-		: "dm" (x & -x));
-	return 32 - cnt;
-}
-#define __ffs(x) (ffs(x) - 1)
-
-/*
- *	fls: find last bit set.
- */
-static inline int fls(int x)
-{
-	int cnt;
-
-	__asm__ ("bfffo %1{#0,#0},%0"
-		: "=d" (cnt)
-		: "dm" (x));
-	return 32 - cnt;
-}
-
-static inline int __fls(int x)
-{
-	return fls(x) - 1;
-}
-
-#endif
-
-#include <asm-generic/bitops/ext2-atomic.h>
-#include <asm-generic/bitops/le.h>
-#include <asm-generic/bitops/fls64.h>
-#include <asm-generic/bitops/hweight.h>
-#include <asm-generic/bitops/lock.h>
-#endif /* __KERNEL__ */
 
 #endif /* _M68K_BITOPS_H */
