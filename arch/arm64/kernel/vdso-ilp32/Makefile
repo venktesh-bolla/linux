@@ -11,9 +11,14 @@ obj-ilp32-vdso := gettimeofday-ilp32.o note-ilp32.o sigreturn-ilp32.o
 targets := $(obj-ilp32-vdso) vdso-ilp32.so vdso-ilp32.so.dbg
 obj-ilp32-vdso := $(addprefix $(obj)/, $(obj-ilp32-vdso))
 
-ccflags-y := -shared -fno-common -fno-builtin
+ccflags-y := -shared -fno-common -fno-builtin -fno-stack-protector
+ccflags-y += -DDISABLE_BRANCH_PROFILING
 ccflags-y += -nostdlib -Wl,-soname=linux-ilp32-vdso.so.1 \
 		$(call cc-ldoption, -Wl$(comma)--hash-style=sysv)
+
+# Force -O2 to avoid libgcc dependencies
+CFLAGS_REMOVE_gettimeofday-ilp32.o = -pg -Os
+CFLAGS_gettimeofday-ilp32.o = -O2 -mcmodel=tiny -mabi=ilp32
 
 # Disable gcov profiling for VDSO code
 GCOV_PROFILE := n
@@ -52,8 +57,8 @@ include/generated/vdso-ilp32-offsets.h: $(obj)/vdso-ilp32.so.dbg FORCE
 #$(obj-ilp32-vdso): %.o: $(src)/../vdso/$(subst -ilp32,,%.S)
 #	$(call if_changed_dep,vdso-ilp32as)
 
-$(obj)/gettimeofday-ilp32.o: $(src)/../vdso/gettimeofday.S
-	$(call if_changed_dep,vdso-ilp32as)
+$(obj)/gettimeofday-ilp32.o: $(src)/../vdso/gettimeofday.c
+	$(call if_changed_dep,vdso-ilp32cc)
 
 $(obj)/note-ilp32.o: $(src)/../vdso/note.S
 	$(call if_changed_dep,vdso-ilp32as)
@@ -66,6 +71,8 @@ $(obj)/sigreturn-ilp32.o: $(src)/../vdso/sigreturn.S
 # Actual build commands
 quiet_cmd_vdso-ilp32ld = VDSOILP32L $@
       cmd_vdso-ilp32ld = $(CC) $(c_flags) -mabi=ilp32  -Wl,-n -Wl,-T $^ -o $@
+quiet_cmd_vdso-ilp32cc = VDSOILP32C $@
+      cmd_vdso-ilp32cc = $(CC) $(c_flags) -mabi=ilp32 -c -o $@ $<
 quiet_cmd_vdso-ilp32as = VDSOILP32A $@
       cmd_vdso-ilp32as = $(CC) $(a_flags) -mabi=ilp32 -c -o $@ $<
 
