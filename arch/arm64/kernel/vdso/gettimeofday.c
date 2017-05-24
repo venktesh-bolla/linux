@@ -26,7 +26,14 @@
 #include <linux/math64.h>
 #include <linux/time.h>
 #include <linux/kernel.h>
+
+#ifdef __ILP32__
+#undef BITS_PER_LONG
+#define BITS_PER_LONG 32
+#endif
+
 #include <linux/hrtimer.h>
+
 
 extern struct vdso_data _vdso_data;
 
@@ -122,7 +129,7 @@ static notrace u64 get_clock_shifted_nsec(u64 cycle_last, u64 mult)
 
 	res = res - cycle_last;
 	/* We can only guarantee 56 bits of precision. */
-	res &= ~(0xff00ul<<48);
+	res &= ~(0xff00ull<<48);
 	return res * mult;
 }
 
