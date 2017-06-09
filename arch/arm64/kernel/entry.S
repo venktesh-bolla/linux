@@ -594,7 +594,7 @@ el0_svc_compat:
 	 * AArch32 syscall handling
 	 */
 	adrp	stbl, compat_sys_call_table	// load compat syscall table pointer
-	ldr     x16, [tsk, #TSK_TI_FLAGS]
+	ldr     x19, [tsk, #TSK_TI_FLAGS]
 	uxtw	scno, w7			// syscall number in w7 (r7)
 	mov     sc_nr, #__NR_compat_syscalls
 	b	el0_svc_naked
@@ -816,11 +816,11 @@ ENDPROC(ret_from_fork)
 	.align	6
 el0_svc:
 	adrp	stbl, sys_call_table		// load syscall table pointer
-	ldr	x16, [tsk, #TSK_TI_FLAGS]
+	ldr	x19, [tsk, #TSK_TI_FLAGS]
 	uxtw	scno, w8			// syscall number in w8
 	mov	sc_nr, #__NR_syscalls
 #ifdef CONFIG_ARM64_ILP32
-	tst	x16, #_TIF_32BIT_AARCH64
+	tst	x19, #_TIF_32BIT_AARCH64
 	b.eq	el0_svc_naked			// We are using LP64  syscall table
 	adrp	stbl, sys_call_ilp32_table	// load ilp32 syscall table pointer
 	delouse_input_regs
