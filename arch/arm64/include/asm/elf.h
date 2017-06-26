@@ -176,6 +176,7 @@ extern int arch_setup_additional_pages(struct linux_binprm *bprm,
 
 /* PIE load location for compat arm. Must match ARM ELF_ET_DYN_BASE. */
 #define COMPAT_ELF_ET_DYN_BASE		0x000400000UL
+#endif /*CONFIG_COMPAT */
 
 #ifdef CONFIG_AARCH32_EL0
 /* AArch32 registers. */
