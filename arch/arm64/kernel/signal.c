@@ -47,11 +47,6 @@ struct rt_sigframe {
 	struct ucontext uc;
 };
 
-struct frame_record {
-	u64 fp;
-	u64 lr;
-};
-
 struct rt_sigframe_user_layout {
 	struct rt_sigframe __user *sigframe;
 	struct frame_record __user *next_frame;
@@ -88,14 +83,6 @@ static size_t sigframe_size(struct rt_sigframe_user_layout const *user)
 {
 	return round_up(max(user->size, sizeof(struct rt_sigframe)), 16);
 }
-
-/*
- * Sanity limit on the approximate maximum size of signal frame we'll
- * try to generate.  Stack alignment padding and the frame record are
- * not taken into account.  This limit is not a guarantee and is
- * NOT ABI.
- */
-#define SIGFRAME_MAXSZ SZ_64K
 
 static int __sigframe_alloc(struct rt_sigframe_user_layout *user,
 			    unsigned long *offset, size_t size, bool extend)
@@ -172,7 +159,7 @@ static void __user *apply_user_offset(
 	return base + offset;
 }
 
-static int preserve_fpsimd_context(struct fpsimd_context __user *ctx)
+int preserve_fpsimd_context(struct fpsimd_context __user *ctx)
 {
 	struct fpsimd_state *fpsimd = &current->thread.fpsimd_state;
 	int err;
@@ -192,7 +179,7 @@ static int preserve_fpsimd_context(struct fpsimd_context __user *ctx)
 	return err ? -EFAULT : 0;
 }
 
-static int restore_fpsimd_context(struct fpsimd_context __user *ctx)
+int restore_fpsimd_context(struct fpsimd_context __user *ctx)
 {
 	struct fpsimd_state fpsimd;
 	__u32 magic, size;
@@ -219,11 +206,7 @@ static int restore_fpsimd_context(struct fpsimd_context __user *ctx)
 	return err ? -EFAULT : 0;
 }
 
-struct user_ctxs {
-	struct fpsimd_context __user *fpsimd;
-};
-
-static int __parse_user_sigcontext(struct user_ctxs *user,
+int __parse_user_sigcontext(struct user_ctxs *user,
 				   struct sigcontext __user const *sc,
 				   void __user const *sigframe_base)
 {
@@ -365,9 +348,6 @@ done:
 invalid:
 	return -EINVAL;
 }
-
-#define parse_user_sigcontext(user, sf)					\
-	__parse_user_sigcontext(user, &(sf)->uc.uc_mcontext, sf)
 
 static int restore_sigframe(struct pt_regs *regs,
 			    struct rt_sigframe __user *sf)
