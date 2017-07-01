@@ -30,10 +30,7 @@
 #include <asm/uaccess.h>
 #include <asm/unistd.h>
 #include <asm/ucontext.h>
-
-
-#define ILP32_RT_SIGFRAME_FP_POS (offsetof(struct ilp32_rt_sigframe, sig)	\
-			+ offsetof(struct ilp32_sigframe, fp))
+#include <asm/vdso.h>
 
 struct ilp32_ucontext {
         u32		uc_flags;
@@ -46,42 +43,95 @@ struct ilp32_ucontext {
         struct sigcontext uc_mcontext;
 };
 
-struct ilp32_sigframe {
-	struct ilp32_ucontext uc;
-	u64 fp;
-	u64 lr;
-};
-
 struct ilp32_rt_sigframe {
-	struct compat_siginfo info;
-	struct ilp32_sigframe sig;
+	struct siginfo info;
+	struct ilp32_ucontext uc;
 };
 
-static int restore_ilp32_sigframe(struct pt_regs *regs,
-                            struct ilp32_sigframe __user *sf)
+struct ilp32_extra_context {
+	struct _aarch64_ctx head;
+	__u32 datap; /* 16-byte aligned pointer to extra space cast to __u64 */
+	__u32 size; /* size in bytes of the extra space */
+	__u32 __reserved[3];
+};
+
+struct ilp32_rt_sigframe_user_layout {
+	struct ilp32_rt_sigframe __user *sigframe;
+	struct frame_record __user *next_frame;
+
+	unsigned int size;	/* size of allocated sigframe data */
+	unsigned int limit;	/* largest allowed size */
+
+	unsigned int fpsimd_offset;
+	unsigned int esr_offset;
+	unsigned int extra_offset;
+	unsigned int end_offset;
+};
+
+#define BASE_SIGFRAME_SIZE round_up(sizeof(struct ilp32_rt_sigframe), 16)
+#define TERMINATOR_SIZE round_up(sizeof(struct _aarch64_ctx), 16)
+#define EXTRA_CONTEXT_SIZE round_up(sizeof(struct ilp32_extra_context), 16)
+
+static size_t ilp32_sigframe_size(struct ilp32_rt_sigframe_user_layout const *user)
+{
+	return round_up(max(user->size, (unsigned int)sizeof(struct ilp32_rt_sigframe)), 16);
+}
+
+static void __user *apply_user_offset(
+	struct ilp32_rt_sigframe_user_layout const *user, unsigned long offset)
+{
+	char __user *base = (char __user *)user->sigframe;
+
+	return base + offset;
+}
+
+static void ilp32_init_user_layout(struct ilp32_rt_sigframe_user_layout *user)
+{
+	const size_t reserved_size =
+		sizeof(user->sigframe->uc.uc_mcontext.__reserved);
+
+	memset(user, 0, sizeof(*user));
+	user->size = offsetof(struct ilp32_rt_sigframe, uc.uc_mcontext.__reserved);
+
+	user->limit = user->size + reserved_size;
+
+	user->limit -= TERMINATOR_SIZE;
+	user->limit -= EXTRA_CONTEXT_SIZE;
+	/* Reserve space for extension and terminator ^ */
+}
+
+static int ilp32_restore_sigframe(struct pt_regs *regs,
+			    struct ilp32_rt_sigframe __user *sf)
 {
 	sigset_t set;
-	int err;
-	err = get_sigset_t(&set, &sf->uc.uc_sigmask);
+	int i, err;
+	struct user_ctxs user;
+
+	err = __copy_from_user(&set, &sf->uc.uc_sigmask, sizeof(set));
 	if (err == 0)
 		set_current_blocked(&set);
-	err |= restore_sigcontext(regs, &sf->uc.uc_mcontext);
+
+	for (i = 0; i < 31; i++)
+		__get_user_error(regs->regs[i], &sf->uc.uc_mcontext.regs[i],
+				 err);
+	__get_user_error(regs->sp, &sf->uc.uc_mcontext.sp, err);
+	__get_user_error(regs->pc, &sf->uc.uc_mcontext.pc, err);
+	__get_user_error(regs->pstate, &sf->uc.uc_mcontext.pstate, err);
+
+	/*
+	 * Avoid sys_rt_sigreturn() restarting.
+	 */
+	regs->syscallno = ~0UL;
+
+	err |= !valid_user_regs(&regs->user_regs, current);
+	//if (err == 0)
+		//err = parse_user_sigcontext(&user, sf);
+
+	if (err == 0)
+		err = restore_fpsimd_context(user.fpsimd);
+
 	return err;
 }
-
-static int setup_ilp32_sigframe(struct ilp32_sigframe __user *sf,
-                          struct pt_regs *regs, sigset_t *set)
-{
-	int err = 0;
-	/* set up the stack frame for unwinding */
-	__put_user_error(regs->regs[29], &sf->fp, err);
-	__put_user_error(regs->regs[30], &sf->lr, err);
-
-	err |= put_sigset_t(&sf->uc.uc_sigmask, set);
-	err |= setup_sigcontext(&sf->uc.uc_mcontext, regs);
-	return err;
-}
-
 asmlinkage long ilp32_sys_rt_sigreturn(struct pt_regs *regs)
 {
 	struct ilp32_rt_sigframe __user *frame;
@@ -90,9 +140,8 @@ asmlinkage long ilp32_sys_rt_sigreturn(struct pt_regs *regs)
 	current->restart_block.fn = do_no_restart_syscall;
 
 	/*
-	 * Since we stacked the signal on a 128-bit boundary,
-	 * then 'sp' should be word aligned here.  If it's
-	 * not, then the user is trying to mess with us.
+	 * Since we stacked the signal on a 128-bit boundary, then 'sp' should
+	 * be word aligned here.
 	 */
 	if (regs->sp & 15)
 		goto badframe;
@@ -102,10 +151,10 @@ asmlinkage long ilp32_sys_rt_sigreturn(struct pt_regs *regs)
 	if (!access_ok(VERIFY_READ, frame, sizeof (*frame)))
 		goto badframe;
 
-	if (restore_ilp32_sigframe(regs, &frame->sig))
+	if (ilp32_restore_sigframe(regs, frame))
 		goto badframe;
 
-	if (compat_restore_altstack(&frame->sig.uc.uc_stack))
+	if (compat_restore_altstack(&frame->uc.uc_stack))
 		goto badframe;
 
 	return regs->regs[0];
@@ -119,51 +168,248 @@ badframe:
 	return 0;
 }
 
-static struct ilp32_rt_sigframe __user *ilp32_get_sigframe(struct ksignal *ksig,
-					       struct pt_regs *regs)
+static int __ilp32_sigframe_alloc(struct ilp32_rt_sigframe_user_layout *user,
+			    unsigned int *offset, size_t size, bool extend)
+{
+	size_t padded_size = round_up(size, 16);
+
+	if (padded_size > user->limit - user->size &&
+	    !user->extra_offset &&
+	    extend) {
+		int ret;
+
+		user->limit += EXTRA_CONTEXT_SIZE;
+		ret = __ilp32_sigframe_alloc(user, &user->extra_offset,
+				       sizeof(struct ilp32_extra_context), false);
+		if (ret) {
+			user->limit -= EXTRA_CONTEXT_SIZE;
+			return ret;
+		}
+
+		/* Reserve space for the __reserved[] terminator */
+		user->size += TERMINATOR_SIZE;
+
+		/*
+		 * Allow expansion up to SIGFRAME_MAXSZ, ensuring space for
+		 * the terminator:
+		 */
+		user->limit = SIGFRAME_MAXSZ - TERMINATOR_SIZE;
+	}
+
+	/* Still not enough space?  Bad luck! */
+	if (padded_size > user->limit - user->size)
+		return -ENOMEM;
+
+	*offset = user->size;
+	user->size += padded_size;
+
+	return 0;
+}
+
+/*
+ * Allocate space for an optional record of <size> bytes in the user
+ * signal frame.  The offset from the signal frame base address to the
+ * allocated block is assigned to *offset.
+ */
+static int ilp32_sigframe_alloc(struct ilp32_rt_sigframe_user_layout *user,
+			  unsigned int *offset, size_t size)
+{
+	return __ilp32_sigframe_alloc(user, offset, size, true);
+}
+
+/* Allocate the null terminator record and prevent further allocations */
+static int ilp32_sigframe_alloc_end(struct ilp32_rt_sigframe_user_layout *user)
+{
+	int ret;
+
+	/* Un-reserve the space reserved for the terminator: */
+	user->limit += TERMINATOR_SIZE;
+
+	ret = ilp32_sigframe_alloc(user, &user->end_offset,
+			     sizeof(struct _aarch64_ctx));
+	if (ret)
+		return ret;
+
+	/* Prevent further allocation: */
+	user->limit = user->size;
+	return 0;
+}
+
+/* Determine the layout of optional records in the signal frame */
+static int ilp32_setup_sigframe_layout(struct ilp32_rt_sigframe_user_layout *user)
+{
+	int err;
+
+	err = ilp32_sigframe_alloc(user, &user->fpsimd_offset,
+			     sizeof(struct fpsimd_context));
+	if (err)
+		return err;
+
+	/* fault information, if valid */
+	if (current->thread.fault_code) {
+		err = ilp32_sigframe_alloc(user, &user->esr_offset,
+				     sizeof(struct esr_context));
+		if (err)
+			return err;
+	}
+
+	return ilp32_sigframe_alloc_end(user);
+}
+
+static int ilp32_setup_sigframe(struct ilp32_rt_sigframe_user_layout *user,
+			  struct pt_regs *regs, sigset_t *set)
+{
+	int i, err = 0;
+	struct ilp32_rt_sigframe __user *sf = user->sigframe;
+
+	/* set up the stack frame for unwinding */
+	__put_user_error(regs->regs[29], &user->next_frame->fp, err);
+	__put_user_error(regs->regs[30], &user->next_frame->lr, err);
+
+	for (i = 0; i < 31; i++)
+		__put_user_error(regs->regs[i], &sf->uc.uc_mcontext.regs[i],
+				 err);
+	__put_user_error(regs->sp, &sf->uc.uc_mcontext.sp, err);
+	__put_user_error(regs->pc, &sf->uc.uc_mcontext.pc, err);
+	__put_user_error(regs->pstate, &sf->uc.uc_mcontext.pstate, err);
+
+	__put_user_error(current->thread.fault_address, &sf->uc.uc_mcontext.fault_address, err);
+
+	err |= __copy_to_user(&sf->uc.uc_sigmask, set, sizeof(*set));
+
+	if (err == 0) {
+		struct fpsimd_context __user *fpsimd_ctx =
+			apply_user_offset(user, user->fpsimd_offset);
+		err |= preserve_fpsimd_context(fpsimd_ctx);
+	}
+
+	/* fault information, if valid */
+	if (err == 0 && user->esr_offset) {
+		struct esr_context __user *esr_ctx =
+			apply_user_offset(user, user->esr_offset);
+
+		__put_user_error(ESR_MAGIC, &esr_ctx->head.magic, err);
+		__put_user_error(sizeof(*esr_ctx), &esr_ctx->head.size, err);
+		__put_user_error(current->thread.fault_code, &esr_ctx->esr, err);
+	}
+
+	if (err == 0 && user->extra_offset) {
+		char __user *sfp = (char __user *)user->sigframe;
+		char __user *userp =
+			apply_user_offset(user, user->extra_offset);
+
+		struct ilp32_extra_context __user *extra;
+		struct _aarch64_ctx __user *end;
+		u32 extra_datap;
+		u32 extra_size;
+
+		extra = (struct ilp32_extra_context __user *)userp;
+		userp += EXTRA_CONTEXT_SIZE;
+
+		end = (struct _aarch64_ctx __user *)userp;
+		userp += TERMINATOR_SIZE;
+
+		/*
+		 * extra_datap is just written to the signal frame.
+		 * The value gets cast back to a void __user *
+		 * during sigreturn.
+		 */
+		extra_datap = (__force u32)userp;
+		extra_size = sfp + round_up(user->size, 16) - userp;
+
+		__put_user_error(EXTRA_MAGIC, &extra->head.magic, err);
+		__put_user_error(EXTRA_CONTEXT_SIZE, &extra->head.size, err);
+		__put_user_error(extra_datap, &extra->datap, err);
+		__put_user_error(extra_size, &extra->size, err);
+
+		/* Add the terminator */
+		__put_user_error(0, &end->magic, err);
+		__put_user_error(0, &end->size, err);
+	}
+
+	/* set the "end" magic */
+	if (err == 0) {
+		struct _aarch64_ctx __user *end =
+			apply_user_offset(user, user->end_offset);
+
+		__put_user_error(0, &end->magic, err);
+		__put_user_error(0, &end->size, err);
+	}
+
+	return err;
+}
+
+static int ilp32_get_sigframe(struct ilp32_rt_sigframe_user_layout *user,
+			 struct ksignal *ksig, struct pt_regs *regs)
 {
 	unsigned long sp, sp_top;
-	struct ilp32_rt_sigframe __user *frame;
+	int err;
+
+	ilp32_init_user_layout(user);
+	err = ilp32_setup_sigframe_layout(user);
+	if (err)
+		return err;
 
 	sp = sp_top = sigsp(regs->sp, ksig);
 
-	sp = (sp - sizeof(struct ilp32_rt_sigframe)) & ~15;
-	frame = (struct ilp32_rt_sigframe __user *)sp;
+	sp = round_down(sp - sizeof(struct frame_record), 16);
+	user->next_frame = (struct frame_record __user *)sp;
+
+	sp = round_down(sp, 16) - ilp32_sigframe_size(user);
+	user->sigframe = (struct ilp32_rt_sigframe __user *)sp;
 
 	/*
 	 * Check that we can actually write to the signal frame.
 	 */
-	if (!access_ok(VERIFY_WRITE, frame, sp_top - sp))
-		frame = NULL;
+	if (!access_ok(VERIFY_WRITE, user->sigframe, sp_top - sp))
+		return -EFAULT;
 
-	return frame;
+	return 0;
 }
 
-/*
- * ILP32 signal handling routines called from signal.c
- */
+
+void ilp32_setup_return(struct pt_regs *regs, struct k_sigaction *ka,
+			 struct ilp32_rt_sigframe_user_layout *user, int usig)
+{
+	__sigrestore_t sigtramp;
+
+	regs->regs[0] = usig;
+	regs->sp = (unsigned long)user->sigframe;
+	regs->regs[29] = (unsigned long)&user->next_frame->fp;
+	regs->pc = (unsigned long)ka->sa.sa_handler;
+
+	if (ka->sa.sa_flags & SA_RESTORER)
+		sigtramp = ka->sa.sa_restorer;
+	else
+		sigtramp = VDSO_SYMBOL(current->mm->context.vdso, sigtramp_ilp32);
+
+	regs->regs[30] = (unsigned long)sigtramp;
+}
+
 int ilp32_setup_rt_frame(int usig, struct ksignal *ksig,
 			  sigset_t *set, struct pt_regs *regs)
 {
+	struct ilp32_rt_sigframe_user_layout user;
 	struct ilp32_rt_sigframe __user *frame;
 	int err = 0;
 
-	frame = ilp32_get_sigframe(ksig, regs);
-
-	if (!frame)
+	if (ilp32_get_sigframe(&user, ksig, regs))
 		return 1;
 
-	err |= copy_siginfo_to_user32(&frame->info, &ksig->info);
+	frame = user.sigframe;
 
-	__put_user_error(0, &frame->sig.uc.uc_flags, err);
-	__put_user_error(0, &frame->sig.uc.uc_link, err);
+	__put_user_error(0, &frame->uc.uc_flags, err);
+	__put_user_error(0, &frame->uc.uc_link, err);
 
-	err |= __compat_save_altstack(&frame->sig.uc.uc_stack, regs->sp);
-	err |= setup_ilp32_sigframe(&frame->sig, regs, set);
+	err |= __compat_save_altstack(&frame->uc.uc_stack, regs->sp);
+	err |= ilp32_setup_sigframe(&user, regs, set);
 	if (err == 0) {
-		setup_return(regs, &ksig->ka, frame, ILP32_RT_SIGFRAME_FP_POS, usig);
-		regs->regs[1] = (unsigned long)&frame->info;
-		regs->regs[2] = (unsigned long)&frame->sig.uc;
+		ilp32_setup_return(regs, &ksig->ka, &user, usig);
+		if (ksig->ka.sa.sa_flags & SA_SIGINFO) {
+			err |= copy_siginfo_to_user(&frame->info, &ksig->info);
+			regs->regs[1] = (unsigned long)&frame->info;
+			regs->regs[2] = (unsigned long)&frame->uc;
+		}
 	}
 
 	return err;
