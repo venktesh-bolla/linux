@@ -124,8 +124,8 @@ static int ilp32_restore_sigframe(struct pt_regs *regs,
 	regs->syscallno = ~0UL;
 
 	err |= !valid_user_regs(&regs->user_regs, current);
-	//if (err == 0)
-		//err = parse_user_sigcontext(&user, sf);
+	if (err == 0)
+		err = parse_user_sigcontext(&user, sf);
 
 	if (err == 0)
 		err = restore_fpsimd_context(user.fpsimd);
@@ -143,19 +143,30 @@ asmlinkage long ilp32_sys_rt_sigreturn(struct pt_regs *regs)
 	 * Since we stacked the signal on a 128-bit boundary, then 'sp' should
 	 * be word aligned here.
 	 */
-	if (regs->sp & 15)
+	if (regs->sp & 15) {
+		pr_err("1\n");
 		goto badframe;
+	}
 
 	frame = (struct ilp32_rt_sigframe __user *)regs->sp;
 
-	if (!access_ok(VERIFY_READ, frame, sizeof (*frame)))
+	if (!access_ok(VERIFY_READ, frame, sizeof (*frame))) {
+		pr_err("2\n");
 		goto badframe;
 
-	if (ilp32_restore_sigframe(regs, frame))
-		goto badframe;
+	}
 
-	if (compat_restore_altstack(&frame->uc.uc_stack))
+	if (ilp32_restore_sigframe(regs, frame)) {
+		pr_err("3\n");
 		goto badframe;
+	}
+
+
+	if (compat_restore_altstack(&frame->uc.uc_stack)) {
+		pr_err("4\n");
+		goto badframe;
+	}
+
 
 	return regs->regs[0];
 
