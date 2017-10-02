@@ -47,6 +47,8 @@
 #include <asm/kvm_psci.h>
 #include <asm/sections.h>
 
+cycles_t min_cycles, mcycles = ULONG_MAX;
+
 #ifdef REQUIRES_VIRT
 __asm__(".arch_extension	virt");
 #endif
@@ -693,6 +695,8 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *run)
 
 		kvm_arm_setup_debug(vcpu);
 
+		min_cycles = ULONG_MAX;
+
 		/**************************************************************
 		 * Enter the guest
 		 */
@@ -755,6 +759,11 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *run)
 
 	if (vcpu->sigset_active)
 		sigprocmask(SIG_SETMASK, &sigsaved, NULL);
+
+	if (min_cycles < mcycles) {
+		mcycles = min_cycles;
+		pr_err("Cycles in guest: %ld\n", min_cycles);
+	}
 	return ret;
 }
 
@@ -1382,14 +1391,14 @@ static int init_hyp_mode(void)
 	}
 
 	err = create_hyp_mappings(kvm_ksym_ref(__start_rodata),
-				  kvm_ksym_ref(__end_rodata), PAGE_HYP_RO);
+				  kvm_ksym_ref(__end_rodata), PAGE_HYP);
 	if (err) {
 		kvm_err("Cannot map rodata section\n");
 		goto out_err;
 	}
 
 	err = create_hyp_mappings(kvm_ksym_ref(__bss_start),
-				  kvm_ksym_ref(__bss_stop), PAGE_HYP_RO);
+				  kvm_ksym_ref(__bss_stop), PAGE_HYP);
 	if (err) {
 		kvm_err("Cannot map bss section\n");
 		goto out_err;

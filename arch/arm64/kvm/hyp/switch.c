@@ -278,11 +278,14 @@ static void __hyp_text __skip_instr(struct kvm_vcpu *vcpu)
 	write_sysreg_el2(*vcpu_pc(vcpu), elr);
 }
 
+extern cycles_t min_cycles;
+
 int __hyp_text __kvm_vcpu_run(struct kvm_vcpu *vcpu)
 {
 	struct kvm_cpu_context *host_ctxt;
 	struct kvm_cpu_context *guest_ctxt;
 	bool fp_enabled;
+	cycles_t cycles, mcycles = ULONG_MAX, *kvm_cycles = kern_hyp_va(&min_cycles);
 	u64 exit_code;
 
 	vcpu = kern_hyp_va(vcpu);
@@ -310,8 +313,13 @@ int __hyp_text __kvm_vcpu_run(struct kvm_vcpu *vcpu)
 
 	/* Jump in the fire! */
 again:
+	cycles = get_cycles();
+
 	exit_code = __guest_enter(vcpu, host_ctxt);
 	/* And we're baaack! */
+
+	cycles = get_cycles() - cycles;
+	mcycles = cycles < mcycles ? cycles : mcycles;
 
 	/*
 	 * We're using the raw exception code in order to only process
@@ -387,6 +395,8 @@ again:
 	 * system may enable SPE here and make use of the TTBRs.
 	 */
 	__debug_cond_restore_host_state(vcpu);
+
+	*kvm_cycles = mcycles < *kvm_cycles ? mcycles : *kvm_cycles;
 
 	return exit_code;
 }
