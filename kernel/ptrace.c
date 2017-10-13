@@ -1244,10 +1244,10 @@ int compat_ptrace_request(struct task_struct *child, compat_long_t request,
 		if (addr != sizeof(compat_sigset_t))
 			return -EINVAL;
 
-		sigset_to_compat(&set32, &child->blocked);
-
-		if (copy_to_user(datap, &set32, sizeof(set32)))
-			return -EFAULT;
+		ret = put_compat_sigset((compat_sigset_t __user *) datap,
+				&child->blocked, sizeof(compat_sigset_t));
+		if (ret)
+			return ret;
 
 		ret = 0;
 		break;
@@ -1255,10 +1255,11 @@ int compat_ptrace_request(struct task_struct *child, compat_long_t request,
 		if (addr != sizeof(compat_sigset_t))
 			return -EINVAL;
 
-		if (copy_from_user(&set32, datap, sizeof(compat_sigset_t)))
-			return -EFAULT;
+		ret = get_compat_sigset(&new_set,
+				(compat_sigset_t __user *) datap);
+		if (ret)
+			break;
 
-		sigset_from_compat(&new_set, &set32);
 		ret = ptrace_setsigmask(child, &new_set);
 		break;
 #ifdef CONFIG_HAVE_ARCH_TRACEHOOK
