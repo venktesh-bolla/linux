@@ -11,7 +11,7 @@ while [ "$1" != "" ] ; do
 	-r) N="$1" ;;
 	-[Wg]*) N="$1" ;;
 	-[olv]|-[Ofd]*|-nostdlib) N="$1" ;;
-	--end-group|--start-group)
+	--end-group|--start-group|-maarch64linux)
 		 N="-Wl,$1" ;;
 	-[RTFGhIezcbyYu]*|\
 --script|--defsym|-init|-Map|--oformat|-rpath|\
