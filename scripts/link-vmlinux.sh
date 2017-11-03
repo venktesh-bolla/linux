@@ -64,6 +64,53 @@ archive_builtin()
 	fi
 }
 
+# If CONFIG_CLANG_LTO is selected, the compiler produces LLVM IR files instead
+# of ELF object files. This function expands individual IR files from a list of
+# objects that would have otherwise been linked already.
+expand()
+{
+	if [ -z "${CONFIG_CLANG_LTO}" ]; then
+		echo $*
+	fi
+
+	local objs
+
+	for o in $*; do
+		if [ -f ${o}.objects ]; then
+			objs="${objs} $(xargs < ${o}.objects)"
+		else
+			objs="${objs} ${o}"
+		fi
+	done
+
+	echo "${objs}"
+}
+
+# If CONFIG_CLANG_LTO is selected, collect generated symbol versions into
+# .tmp_symversions
+modversions()
+{
+	if [ -z "${CONFIG_CLANG_LTO}" ]; then
+		return
+	fi
+
+	if [ -z "${CONFIG_MODVERSIONS}" ]; then
+		return
+	fi
+
+	rm -f .tmp_symversions
+
+	for o in $(expand ${KBUILD_VMLINUX_INIT}) \
+		 $(expand ${KBUILD_VMLINUX_MAIN}) \
+		 $(expand ${KBUILD_VMLINUX_LIBS}); do
+		if [ -f ${o}.symversions ]; then
+			cat ${o}.symversions >> .tmp_symversions
+		fi
+	done
+
+	echo "-T .tmp_symversions"
+}
+
 # Link of vmlinux.o used for section mismatch analysis
 # ${1} output file
 modpost_link()
@@ -78,13 +125,22 @@ modpost_link()
 			${KBUILD_VMLINUX_LIBS}				\
 			--end-group"
 	else
-		objects="${KBUILD_VMLINUX_INIT}				\
+		objects="$(expand ${KBUILD_VMLINUX_INIT})		\
 			--start-group					\
-			${KBUILD_VMLINUX_MAIN}				\
-			${KBUILD_VMLINUX_LIBS}				\
+			$(expand ${KBUILD_VMLINUX_MAIN})		\
+			$(expand ${KBUILD_VMLINUX_LIBS})		\
 			--end-group"
 	fi
-	${LD} ${LDFLAGS} -r -o ${1} ${objects}
+
+	if [ -n "${CONFIG_CLANG_LTO}" ]; then
+		# This might take a while, so indicate that we're doing
+		# an LTO link
+		info LTO vmlinux.o
+	else
+		info LD vmlinux.o
+	fi
+
+	${LD} ${LDFLAGS} -r -o ${1} $(modversions) ${objects}
 }
 
 # Link of vmlinux
@@ -96,6 +152,14 @@ vmlinux_link()
 	local objects
 
 	if [ "${SRCARCH}" != "um" ]; then
+		local ld=${LD}
+		local ldflags="${LDFLAGS} ${LDFLAGS_vmlinux}"
+
+		if [ -n "${LD_FINAL_VMLINUX}" ]; then
+			ld=${LD_FINAL_VMLINUX}
+			ldflags="${LDFLAGS_FINAL_VMLINUX} ${LDFLAGS_vmlinux}"
+		fi
+
 		if [ -n "${CONFIG_THIN_ARCHIVES}" ]; then
 			objects="--whole-archive			\
 				built-in.o				\
@@ -105,16 +169,15 @@ vmlinux_link()
 				--end-group				\
 				${1}"
 		else
-			objects="${KBUILD_VMLINUX_INIT}			\
+			objects="$(expand ${KBUILD_VMLINUX_INIT})	\
 				--start-group				\
-				${KBUILD_VMLINUX_MAIN}			\
-				${KBUILD_VMLINUX_LIBS}			\
+				$(expand ${KBUILD_VMLINUX_MAIN})	\
+				$(expand ${KBUILD_VMLINUX_LIBS})	\
 				--end-group				\
 				${1}"
 		fi
 
-		${LD} ${LDFLAGS} ${LDFLAGS_vmlinux} -o ${2}		\
-			-T ${lds} ${objects}
+		${ld} ${ldflags} -o ${2} -T ${lds} ${objects}
 	else
 		if [ -n "${CONFIG_THIN_ARCHIVES}" ]; then
 			objects="-Wl,--whole-archive			\
@@ -140,7 +203,6 @@ vmlinux_link()
 		rm -f linux
 	fi
 }
-
 
 # Create ${2} .o file with all symbols from the ${1} object file
 kallsyms()
@@ -192,6 +254,7 @@ cleanup()
 	rm -f .tmp_System.map
 	rm -f .tmp_kallsyms*
 	rm -f .tmp_version
+	rm -f .tmp_symversions
 	rm -f .tmp_vmlinux*
 	rm -f built-in.o
 	rm -f System.map
@@ -253,11 +316,18 @@ ${MAKE} -f "${srctree}/scripts/Makefile.build" obj=init GCC_PLUGINS_CFLAGS="${GC
 archive_builtin
 
 #link vmlinux.o
-info LD vmlinux.o
 modpost_link vmlinux.o
 
 # modpost vmlinux.o to check for section mismatches
 ${MAKE} -f "${srctree}/scripts/Makefile.modpost" vmlinux.o
+
+if [ -n "${CONFIG_CLANG_LTO}" ]; then
+	# Re-use vmlinux.o, so we can avoid the slow LTO link step in
+	# vmlinux_link
+	KBUILD_VMLINUX_INIT=
+	KBUILD_VMLINUX_MAIN=vmlinux.o
+	KBUILD_VMLINUX_LIBS=
+fi
 
 kallsymso=""
 kallsyms_vmlinux=""

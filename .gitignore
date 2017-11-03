@@ -13,6 +13,7 @@
 *.o
 *.o.*
 *.a
+*.a.*
 *.s
 *.ko
 *.so
@@ -39,6 +40,7 @@ Module.symvers
 *.dwo
 *.su
 *.c.[012]*.*
+*.modversions
 
 #
 # Top-level generic files

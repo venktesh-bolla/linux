@@ -585,6 +585,7 @@ config CC_STACKPROTECTOR_STRONG
 endchoice
 
 config THIN_ARCHIVES
+	depends on !CLANG_LTO
 	def_bool y
 	help
 	  Select this if the architecture wants to use thin archives
@@ -604,6 +605,37 @@ config LD_DEAD_CODE_DATA_ELIMINATION
 	  output sections. Care must be taken not to pull in unrelated
 	  sections (e.g., '.text.init'). Typically '.' in section names
 	  is used to distinguish them from label names / C identifiers.
+
+config ARCH_SUPPORTS_CLANG_LTO
+	bool
+	help
+	  An architecture should select this option it supports:
+	  - compiling with clang,
+	  - compiling inline assembly with clang's integrated assembler,
+	  - and linking with either lld or GNU gold w/ LLVMgold.
+
+config CLANG_LTO
+	bool "Use clang Link Time Optimization (LTO)"
+	depends on ARCH_SUPPORTS_CLANG_LTO
+	depends on !FTRACE_MCOUNT_RECORD
+	select LD_DEAD_CODE_DATA_ELIMINATION
+	help
+          This option enables clang's Link Time Optimization (LTO), which allows
+          the compiler to optimize the kernel globally at link time. If you
+          enable this option, the compiler generates LLVM IR instead of object
+          files, and the actual compilation from IR occurs at the LTO link step,
+          which may take several minutes.
+
+          If you select this option, you must compile the kernel with clang
+          (CC=clang) and use either lld, or GNU gold with the LLVMgold plug-in,
+          as the linker (e.g. LD=ld.gold). Note that if you use gold, the
+          LLVMgold plug-in must be in LD_LIBRARY_PATH. Depending on your linker
+          version, you may need to use GNU ld to link the final vmlinux by
+          setting LD_FINAL_VMLINUX=ld.
+
+          Using clang >= 5.0 and GNU gold from binutils >= 2.27 is recommended
+          for this option.
+
 
 config HAVE_ARCH_WITHIN_STACK_FRAMES
 	bool
