@@ -1212,3 +1212,57 @@ void bitmap_copy_le(unsigned long *dst, const unsigned long *src, unsigned int n
 }
 EXPORT_SYMBOL(bitmap_copy_le);
 #endif
+
+#if BITS_PER_LONG == 64
+/**
+ * bitmap_from_arr32 - copy the contents of a u32 array of bits to bitmap
+ *	@bitmap: array of unsigned longs, the destination bitmap, non NULL
+ *	@src: array of u32 (in host byte order), the source bitmap, non NULL
+ *	@nbits: number of bits in @bitmap
+ */
+void bitmap_from_arr32(unsigned long *bitmap, const u32 *src,
+						unsigned int nbits)
+{
+	unsigned int i, halfwords;
+
+	if (!nbits)
+		return;
+
+	halfwords = DIV_ROUND_UP(nbits, 32);
+	for (i = 0; i < halfwords; i++) {
+		bitmap[i/2] = (unsigned long) src[i];
+		if (++i < halfwords)
+			bitmap[i/2] |= ((unsigned long) src[i]) << 32;
+	}
+
+	/* Clear tail bits in last word beyond nbits. */
+	bitmap[(halfwords - 1) / 2] &= BITMAP_LAST_WORD_MASK(nbits);
+}
+EXPORT_SYMBOL(bitmap_from_arr32);
+
+/**
+ * bitmap_to_arr32 - copy the contents of bitmap to a u32 array of bits
+ *	@dst: array of u32 (in host byte order), the dest bitmap, non NULL
+ *	@bitmap: array of unsigned longs, the source bitmap, non NULL
+ *	@nbits: number of bits in @bitmap
+ */
+void bitmap_to_arr32(u32 *dst, const unsigned long *bitmap, unsigned int nbits)
+{
+	unsigned int i, halfwords;
+
+	if (!nbits)
+		return;
+
+	halfwords = DIV_ROUND_UP(nbits, 32);
+	for (i = 0; i < halfwords; i++) {
+		dst[i] = (u32) (bitmap[i/2] & UINT_MAX);
+		if (++i < halfwords)
+			dst[i] = (u32) (bitmap[i/2] >> 32);
+	}
+
+	/* Clear tail bits in last element of array beyond nbits. */
+	dst[halfwords - 1] &= (u32) (UINT_MAX >> ((-nbits) & 31));
+}
+EXPORT_SYMBOL(bitmap_to_arr32);
+
+#endif

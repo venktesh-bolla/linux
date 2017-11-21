@@ -62,6 +62,8 @@
  * bitmap_allocate_region(bitmap, pos, order)	Allocate specified bit region
  * bitmap_from_u32array(dst, nbits, buf, nwords) *dst = *buf (nwords 32b words)
  * bitmap_to_u32array(buf, nwords, src, nbits)	*buf = *dst (nwords 32b words)
+ * bitmap_from_arr32(bitmap, src, nbits)	Copy bits from u32 src to bitmap
+ * bitmap_to_arr32(dst, bitmap, nbits)		Copy bits from bitmap to u32 dst
  */
 
 /*
@@ -218,6 +220,35 @@ static inline void bitmap_copy(unsigned long *dst, const unsigned long *src,
 		memcpy(dst, src, len);
 	}
 }
+
+/*
+ * Copy bitmap and clear tail bits in last word.
+ */
+static inline void bitmap_copy_safe(unsigned long *dst,
+		const unsigned long *src, unsigned int nbits)
+{
+	bitmap_copy(dst, src, nbits);
+	if (nbits % BITS_PER_LONG)
+		dst[nbits / BITS_PER_LONG] &= BITMAP_LAST_WORD_MASK(nbits);
+}
+
+/*
+ * On 32-bit systems bitmaps are represented as u32 arrays internally, and
+ * therefore conversion is not needed when copying data from/to arrays of u32.
+ */
+#if BITS_PER_LONG == 64
+extern void bitmap_from_arr32(unsigned long *bitmap, const u32 *src,
+							unsigned int nbits);
+extern void bitmap_to_arr32(u32 *dst, const unsigned long *bitmap,
+							unsigned int nbits);
+#else
+#define bitmap_from_arr32(bitmap, src, nbits)		\
+	bitmap_copy_safe((unsigned long *) (bitmap),	\
+			(const unsigned long *) (src), (nbits))
+#define bitmap_to_arr32(dst, bitmap, nbits)		\
+	bitmap_copy_safe((unsigned long *) (dst),	\
+			(const unsigned long *) (bitmap), (nbits))
+#endif
 
 static inline int bitmap_and(unsigned long *dst, const unsigned long *src1,
 			const unsigned long *src2, unsigned int nbits)
