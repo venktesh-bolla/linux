@@ -105,7 +105,7 @@ static void prepare_fault32(struct kvm_vcpu *vcpu, u32 mode, u32 vect_offset)
 	unsigned long new_spsr_value = *vcpu_cpsr(vcpu);
 	bool is_thumb = (new_spsr_value & COMPAT_PSR_T_BIT);
 	u32 return_offset = return_offsets[vect_offset >> 2][is_thumb];
-	u32 return_offset = (is_thumb) ? 4 : 0;
+	u32 sctlr = vcpu_get_c1_sctlr(vcpu);
 
 	cpsr = mode | COMPAT_PSR_I_BIT;
 
