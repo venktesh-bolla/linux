@@ -209,11 +209,6 @@ int restore_fpsimd_context(struct fpsimd_context __user *ctx)
 	return err ? -EFAULT : 0;
 }
 
-struct user_ctxs {
-	struct fpsimd_context __user *fpsimd;
-	struct sve_context __user *sve;
-};
-
 #ifdef CONFIG_ARM64_SVE
 
 static int preserve_sve_context(struct sve_context __user *ctx)
@@ -661,52 +656,9 @@ static int setup_sigframe(struct rt_sigframe_user_layout *user,
 		__put_user_error(current->thread.fault_code, &esr_ctx->esr, err);
 	}
 
-<<<<<<< HEAD
-	/* Scalable Vector Extension state, if present */
-	if (system_supports_sve() && err == 0 && user->sve_offset) {
-		struct sve_context __user *sve_ctx =
-			apply_user_offset(user, user->sve_offset);
-		err |= preserve_sve_context(sve_ctx);
-	}
-
-	if (err == 0 && user->extra_offset) {
-		char __user *sfp = (char __user *)user->sigframe;
-		char __user *userp =
-			apply_user_offset(user, user->extra_offset);
-
-		struct extra_context __user *extra;
-		struct _aarch64_ctx __user *end;
-		u64 extra_datap;
-		u32 extra_size;
-
-		extra = (struct extra_context __user *)userp;
-		userp += EXTRA_CONTEXT_SIZE;
-
-		end = (struct _aarch64_ctx __user *)userp;
-		userp += TERMINATOR_SIZE;
-
-		/*
-		 * extra_datap is just written to the signal frame.
-		 * The value gets cast back to a void __user *
-		 * during sigreturn.
-		 */
-		extra_datap = (__force u64)userp;
-		extra_size = sfp + round_up(user->size, 16) - userp;
-
-		__put_user_error(EXTRA_MAGIC, &extra->head.magic, err);
-		__put_user_error(EXTRA_CONTEXT_SIZE, &extra->head.size, err);
-		__put_user_error(extra_datap, &extra->datap, err);
-		__put_user_error(extra_size, &extra->size, err);
-
-		/* Add the terminator */
-		__put_user_error(0, &end->magic, err);
-		__put_user_error(0, &end->size, err);
-	}
-=======
 	if (err == 0 && user->extra_offset)
 		setup_extra_context((char *) user->sigframe, user->size,
 			(char *) apply_user_offset(user, user->extra_offset));
->>>>>>> arm64: signal: share lp64 signal structures and routines to ilp32
 
 	/* set the "end" magic */
 	if (err == 0) {

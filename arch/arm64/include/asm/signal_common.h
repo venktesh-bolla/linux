@@ -38,6 +38,7 @@
 
 struct user_ctxs {
 	struct fpsimd_context __user *fpsimd;
+	struct sve_context __user *sve;
 };
 
 struct frame_record {
