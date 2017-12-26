@@ -59,6 +59,7 @@ struct ilp32_rt_sigframe_user_layout {
 
 	unsigned int fpsimd_offset;
 	unsigned int esr_offset;
+	unsigned int sve_offset;
 	unsigned int extra_offset;
 	unsigned int end_offset;
 };
@@ -118,8 +119,19 @@ static int ilp32_restore_sigframe(struct pt_regs *regs,
 	if (err == 0)
 		err = parse_user_sigcontext(&user, sf);
 
-	if (err == 0)
-		err = restore_fpsimd_context(user.fpsimd);
+	if (err == 0) {
+		if (!user.fpsimd)
+			return -EINVAL;
+
+		if (user.sve) {
+			if (!system_supports_sve())
+				return -EINVAL;
+
+			err = restore_sve_fpsimd_context(&user);
+		} else {
+			err = restore_fpsimd_context(user.fpsimd);
+		}
+	}
 
 	return err;
 }
@@ -244,6 +256,18 @@ static int ilp32_setup_sigframe_layout(struct ilp32_rt_sigframe_user_layout *use
 			return err;
 	}
 
+	if (system_supports_sve()) {
+		unsigned int vq = 0;
+
+		if (test_thread_flag(TIF_SVE))
+			vq = sve_vq_from_vl(current->thread.sve_vl);
+
+		err = ilp32_sigframe_alloc(user, &user->sve_offset,
+				     SVE_SIG_CONTEXT_SIZE(vq));
+		if (err)
+			return err;
+	}
+
 	return ilp32_sigframe_alloc_end(user);
 }
 
@@ -282,6 +306,13 @@ static int ilp32_setup_sigframe(struct ilp32_rt_sigframe_user_layout *user,
 		__put_user_error(ESR_MAGIC, &esr_ctx->head.magic, err);
 		__put_user_error(sizeof(*esr_ctx), &esr_ctx->head.size, err);
 		__put_user_error(current->thread.fault_code, &esr_ctx->esr, err);
+	}
+
+	/* Scalable Vector Extension state, if present */
+	if (system_supports_sve() && err == 0 && user->sve_offset) {
+		struct sve_context __user *sve_ctx =
+			apply_user_offset(user, user->sve_offset);
+		err |= preserve_sve_context(sve_ctx);
 	}
 
 	if (err == 0 && user->extra_offset)

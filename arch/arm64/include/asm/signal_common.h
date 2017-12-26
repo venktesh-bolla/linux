@@ -55,4 +55,15 @@ int __parse_user_sigcontext(struct user_ctxs *user,
 int preserve_fpsimd_context(struct fpsimd_context __user *ctx);
 int restore_fpsimd_context(struct fpsimd_context __user *ctx);
 
+#ifdef CONFIG_ARM64_SVE
+int preserve_sve_context(struct sve_context __user *ctx);
+int restore_sve_fpsimd_context(struct user_ctxs *user);
+#else /* ! CONFIG_ARM64_SVE */
+
+/* Turn any non-optimised out attempts to use these into a link error: */
+extern int preserve_sve_context(void __user *ctx);
+extern int restore_sve_fpsimd_context(struct user_ctxs *user);
+
+#endif /* ! CONFIG_ARM64_SVE */
+
 #endif /* __ASM_SIGNAL_COMMON_H */

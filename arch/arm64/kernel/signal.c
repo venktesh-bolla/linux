@@ -211,7 +211,7 @@ int restore_fpsimd_context(struct fpsimd_context __user *ctx)
 
 #ifdef CONFIG_ARM64_SVE
 
-static int preserve_sve_context(struct sve_context __user *ctx)
+int preserve_sve_context(struct sve_context __user *ctx)
 {
 	int err = 0;
 	u16 reserved[ARRAY_SIZE(ctx->__reserved)];
@@ -243,7 +243,7 @@ static int preserve_sve_context(struct sve_context __user *ctx)
 	return err ? -EFAULT : 0;
 }
 
-static int restore_sve_fpsimd_context(struct user_ctxs *user)
+int restore_sve_fpsimd_context(struct user_ctxs *user)
 {
 	int err;
 	unsigned int vq;
@@ -305,12 +305,6 @@ fpsimd_only:
 
 	return err ? -EFAULT : 0;
 }
-
-#else /* ! CONFIG_ARM64_SVE */
-
-/* Turn any non-optimised out attempts to use these into a link error: */
-extern int preserve_sve_context(void __user *ctx);
-extern int restore_sve_fpsimd_context(struct user_ctxs *user);
 
 #endif /* ! CONFIG_ARM64_SVE */
 
@@ -654,6 +648,13 @@ static int setup_sigframe(struct rt_sigframe_user_layout *user,
 		__put_user_error(ESR_MAGIC, &esr_ctx->head.magic, err);
 		__put_user_error(sizeof(*esr_ctx), &esr_ctx->head.size, err);
 		__put_user_error(current->thread.fault_code, &esr_ctx->esr, err);
+	}
+
+	/* Scalable Vector Extension state, if present */
+	if (system_supports_sve() && err == 0 && user->sve_offset) {
+		struct sve_context __user *sve_ctx =
+			apply_user_offset(user, user->sve_offset);
+		err |= preserve_sve_context(sve_ctx);
 	}
 
 	if (err == 0 && user->extra_offset)
