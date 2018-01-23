@@ -30,6 +30,10 @@
 #define __constant_be16_to_cpu(x) ((__force __u16)(__be16)(x))
 #define __cpu_to_le64(x) ((__force __le64)__swab64((x)))
 #define __le64_to_cpu(x) __swab64((__force __u64)(__le64)(x))
+#ifdef CONFIG_HAVE_128BIT_ACCESS
+#define __cpu_to_le128(x) ((__force __le128)__swab128((x)))
+#define __le128_to_cpu(x) __swab128((__force __u128)(__le128)(x))
+#endif
 #define __cpu_to_le32(x) ((__force __le32)__swab32((x)))
 #define __le32_to_cpu(x) __swab32((__force __u32)(__le32)(x))
 #define __cpu_to_le16(x) ((__force __le16)__swab16((x)))

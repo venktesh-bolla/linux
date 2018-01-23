@@ -29,9 +29,17 @@ typedef unsigned int __u32;
 #ifdef __GNUC__
 __extension__ typedef __signed__ long long __s64;
 __extension__ typedef unsigned long long __u64;
+#ifdef CONFIG_HAVE_128BIT_ACCESS
+__extension__ typedef __int128_t __s128;
+__extension__ typedef __uint128_t __u128;
+#endif
 #else
 typedef __signed__ long long __s64;
 typedef unsigned long long __u64;
+#ifdef CONFIG_HAVE_128BIT_ACCESS
+typedef __int128_t __s128;
+typedef __uint128_t __u128;
+#endif
 #endif
 
 #endif /* __ASSEMBLY__ */

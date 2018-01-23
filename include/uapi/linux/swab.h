@@ -75,6 +75,20 @@ static inline __attribute_const__ __u64 __fswab64(__u64 val)
 #endif
 }
 
+#ifdef CONFIG_HAVE_128BIT_ACCESS
+static inline __attribute_const__ __u128 __fswab128(__u128 val)
+{
+#if defined(__arch_swab128)
+	return __arch_swab128(val);
+#else
+	__u64 h = (__u64) (val >> 64);
+	__u64 l = (__u64) val;
+
+	return (((__u128)__fswab64(l)) << 64) | (__u128)(__fswab64(h));
+#endif
+}
+#endif
+
 static inline __attribute_const__ __u32 __fswahw32(__u32 val)
 {
 #ifdef __arch_swahw32
@@ -130,6 +144,14 @@ static inline __attribute_const__ __u32 __fswahb32(__u32 val)
 	(__builtin_constant_p((__u64)(x)) ?	\
 	___constant_swab64(x) :			\
 	__fswab64(x))
+#endif
+
+#ifdef CONFIG_HAVE_128BIT_ACCESS
+/**
+ * __swab128 - return a byteswapped 128-bit value
+ * @x: value to byteswap
+ */
+#define __swab128(x)	__fswab128(x)
 #endif
 
 /**
