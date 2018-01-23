@@ -116,6 +116,13 @@ config UPROBES
 	    managed by the kernel and kept transparent to the probed
 	    application. )
 
+config HAVE_128BIT_ACCESS
+	def_bool ARM64
+	help
+	  Architectures having 128-bit access require corresponding APIs,
+	  like reado() and writeo(), which stands for reading and writing
+	  the octet of bytes at once.
+
 config HAVE_64BIT_ALIGNED_ACCESS
 	def_bool 64BIT && !HAVE_EFFICIENT_UNALIGNED_ACCESS
 	help
