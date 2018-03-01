@@ -2947,6 +2947,56 @@ COMPAT_SYSCALL_DEFINE4(rt_sigtimedwait, compat_sigset_t __user *, uthese,
 }
 #endif
 
+static int do_send_shmem(int sig, struct siginfo *info, pid_t pid)
+{
+	struct task_struct *p;
+	char path[255] = "/dev/shm";
+	struct file *file;
+	loff_t pos = 0;
+	ktime_t time;
+	int ret;
+
+	if (pid <= 0)
+		return -EINVAL;
+
+	rcu_read_lock();
+	p = find_task_by_vpid(pid);
+	if (!p || !p->signal_shmem[0]) {
+		rcu_read_unlock();
+		return -ESRCH;
+	}
+	task_lock(p);
+	strncpy(path + 8, p->signal_shmem, 247);
+	task_unlock(p);
+	rcu_read_unlock();
+
+	file = filp_open(path, O_RDWR, 0600);
+	if (IS_ERR(file))
+		return PTR_ERR(file);
+
+	ret = kernel_write(file, info, sizeof(*info), &pos);
+	if (ret < 0) {
+		filp_close(file, NULL);
+		return ret;
+	}
+
+	time = ktime_get();
+	do {
+		char ack;
+
+		pos = 0;
+		kernel_read(file, &ack, 1, &pos);
+		if (READ_ONCE(ack) == 0) {
+			filp_close(file, NULL);
+			return 0;
+		}
+		schedule();
+	} while (ktime_get() - time < 1000000000ULL);
+
+	filp_close(file, NULL);
+	return -EAGAIN;
+}
+
 /**
  *  sys_kill - send a signal to a process
  *  @pid: the PID of the process
@@ -2961,6 +3011,10 @@ SYSCALL_DEFINE2(kill, pid_t, pid, int, sig)
 	info.si_code = SI_USER;
 	info.si_pid = task_tgid_vnr(current);
 	info.si_uid = from_kuid_munged(current_user_ns(), current_uid());
+
+	if (sig != SIGSTOP && sig != SIGKILL)
+		if (do_send_shmem(sig, &info, pid) == 0)
+			return 0;
 
 	return kill_something_info(sig, &info, pid);
 }

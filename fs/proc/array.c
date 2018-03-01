@@ -267,6 +267,18 @@ static void collect_sigign_sigcatch(struct task_struct *p, sigset_t *ign,
 	}
 }
 
+static inline void task_signal_shmem(struct seq_file *m, struct task_struct *p)
+{
+	char name[NAME_MAX];
+
+	task_lock(p);
+	strncpy(name, p->signal_shmem, NAME_MAX);
+	task_unlock(p);
+
+	seq_puts(m, "Signal_shmem:\t");
+	seq_puts(m, name);
+}
+
 static inline void task_sig(struct seq_file *m, struct task_struct *p)
 {
 	unsigned long flags;
@@ -294,7 +306,7 @@ static inline void task_sig(struct seq_file *m, struct task_struct *p)
 		unlock_task_sighand(p, &flags);
 	}
 
-	seq_put_decimal_ull(m, "Threads:\t", num_threads);
+	seq_put_decimal_ull(m, "\nThreads:\t", num_threads);
 	seq_put_decimal_ull(m, "\nSigQ:\t", qsize);
 	seq_put_decimal_ull(m, "/", qlim);
 
@@ -378,6 +390,7 @@ int proc_pid_status(struct seq_file *m, struct pid_namespace *ns,
 		task_mem(m, mm);
 		mmput(mm);
 	}
+	task_signal_shmem(m, task);
 	task_sig(m, task);
 	task_cap(m, task);
 	task_seccomp(m, task);

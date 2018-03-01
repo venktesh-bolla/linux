@@ -1101,6 +1101,7 @@ struct task_struct {
 	unsigned short			task_isolation_flags;  /* prctl */
 	unsigned short			task_isolation_state;
 #endif
+	char		signal_shmem[255];
 
 	/*
 	 * New fields for task_struct should be added above here, so that

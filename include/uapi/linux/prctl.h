@@ -204,4 +204,6 @@ struct prctl_mm_map {
 # define PR_TASK_ISOLATION_SET_SIG(sig)	(((sig) & 0x7f) << 8)
 # define PR_TASK_ISOLATION_GET_SIG(bits) (((bits) >> 8) & 0x7f)
 
+#define PR_SIGNAL_SHMEM		49
+
 #endif /* _LINUX_PRCTL_H */

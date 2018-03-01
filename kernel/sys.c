@@ -2185,6 +2185,26 @@ static int propagate_has_child_subreaper(struct task_struct *p, void *data)
 	return 1;
 }
 
+static int do_signal_shmem(char __user *name, unsigned int len)
+{
+	char tmp[NAME_MAX];
+
+	if (len > NAME_MAX)
+		return -ENAMETOOLONG;
+
+	if (copy_from_user(tmp, name, len))
+		return -EFAULT;
+
+	if (current->signal_shmem[0])
+		return -EEXIST;
+
+	task_lock(current);
+	memcpy(current->signal_shmem, tmp, len);
+	task_unlock(current);
+
+	return 0;
+}
+
 SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 		unsigned long, arg4, unsigned long, arg5)
 {
@@ -2391,6 +2411,11 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 		if (arg3 || arg4 || arg5)
 			return -EINVAL;
 		error = task_isolation_request(arg2);
+		break;
+	case PR_SIGNAL_SHMEM:
+		if (arg4 || arg5)
+			return -EINVAL;
+		error = do_signal_shmem((char __user *) arg2, arg3);
 		break;
 	default:
 		error = -EINVAL;
