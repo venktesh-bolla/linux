@@ -53,6 +53,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <assert.h>
 #include <string.h>
 #include <errno.h>
@@ -500,7 +501,7 @@ static void jitter_handler(int sig)
 	exit(exit_status);
 }
 
-static void test_jitter(unsigned long waitticks)
+static void test_jitter(unsigned long waitticks, int flags)
 {
 	u_int64_t start, last, elapsed;
 	int rc;
@@ -513,7 +514,8 @@ static void test_jitter(unsigned long waitticks)
 	rc = mlockall(MCL_CURRENT);
 	assert(rc == 0);
 
-	set_task_isolation(PR_TASK_ISOLATION_ENABLE |
+	if (flags & PR_TASK_ISOLATION_ENABLE)
+		set_task_isolation(PR_TASK_ISOLATION_ENABLE |
 			   PR_TASK_ISOLATION_SET_SIG(SIGUSR1));
 
 	last = start = get_cycle_count();
@@ -537,26 +539,49 @@ static void test_jitter(unsigned long waitticks)
 	} while (elapsed < waitticks);
 
 	jitter_test_complete = true;
-	prctl_isolation(0);
+
+	if (flags & PR_TASK_ISOLATION_ENABLE)
+		prctl_isolation(0);
+
 	jitter_summarize();
 }
 
 int main(int argc, char **argv)
 {
 	/* How many billion ticks to wait after running the other tests? */
-	unsigned long waitticks;
+	long waitticks = 10;
+	int flags = PR_TASK_ISOLATION_ENABLE;
 	char buf[100];
 	char *result, *end;
 	FILE *f;
 
-	if (argc == 1)
-		waitticks = 10;
-	else if (argc == 2)
-		waitticks = strtol(argv[1], NULL, 10);
-	else {
-		printf("syntax: isolation [gigaticks]\n");
+	errno = 0;
+
+	switch (argc) {
+	case 1:
+		break;
+	case 2:
+		if (strcmp(argv[1], "--dry-run") == 0)
+			flags = 0;
+		else
+			waitticks = strtol(argv[1], NULL, 10);
+		break;
+	case 3:
+		if (strcmp(argv[1], "--dry-run") == 0)
+			flags = 0;
+
+		waitticks = strtol(argv[2], NULL, 10);
+		break;
+	default:
+		printf("syntax: isolation [--dry-run] [gigaticks]\n");
 		ksft_exit_fail();
 	}
+
+	if (errno || waitticks <= 0 || waitticks > (LONG_MAX / 1000000000)) {
+		printf("Gigaticks: bad number\n");
+		ksft_exit_fail();
+	}
+
 	waitticks *= 1000000000;
 
 	/* Get a core from the /sys nohz_full device. */
@@ -637,7 +662,7 @@ int main(int argc, char **argv)
 		return exit_status;
 	}
 
-	test_jitter(waitticks);
+	test_jitter(waitticks, flags);
 
 	return exit_status;
 }
